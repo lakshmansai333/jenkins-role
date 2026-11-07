@@ -1,0 +1,11 @@
+---
+# handlers file for jenkins
+#
+ - name: Reload repo cache
+   yum:
+     update_cache: yes
+
+ - name: Restart Jenkins
+   systemd:
+     name: "{{ jenkins_service }}"
+     state: restarted

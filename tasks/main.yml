@@ -1,0 +1,142 @@
+---
+# tasks file for jenkins
+
+
+ # ------------------------------
+    # Setup Repos & Packages
+    # ------------------------------
+
+    - name: Download Jenkins repo file
+      get_url:
+        url: "{{ jenkins_repo_url }}"
+        dest: /etc/yum.repos.d/jenkins.repo
+        mode: '0644'
+      notify: Reload repo cache
+
+    - name: Import Jenkins GPG key
+      rpm_key:
+        state: present
+        key: "{{ jenkins_gpg_key_url }}"
+
+    - name: Install Java
+      yum:
+        name: "{{ java_package }}"
+        state: present
+
+    - name: Install / upgrade Jenkins
+      yum:
+        name: "{{ jenkins_package }}"
+        state: latest
+      register: jenkins_install
+      notify: Restart Jenkins
+
+    # - name: Deploy Jenkins sysconfig template
+      # template:
+      #   src: "{{ jenkins_sysconfig_src }}"
+      #   dest: "{{ jenkins_sysconfig_dest }}"
+      # register: sysconfig_template
+      # notify: Restart Jenkins
+
+    - name: Enable and start Jenkins service
+      systemd:
+        name: "{{ jenkins_service }}"
+        enabled: yes
+        state: started
+
+    # ------------------------------
+    # Backup & Optional Restore
+    # ------------------------------
+
+    - name: Ensure backup directory exists
+      when: enable_backup
+      file:
+        path: "{{ jenkins_backup_dir }}"    #"/opt/jenkins_backup"
+        state: directory
+
+    - name: Backup Jenkins home directory
+      when: enable_backup
+      archive:
+        path: "{{ jenkins_home }}"
+        dest: "{{ jenkins_backup_dir }}/{{ backup_filename }}"
+        format: gz
+
+    - name: Restore Jenkins home directory (manual trigger only)
+      when: enable_restore
+      unarchive:
+        src: "{{ jenkins_backup_dir }}/{{ backup_filename }}"
+        dest: "{{ jenkins_home }}"
+        remote_src: yes
+      notify: Restart Jenkins
+
+    # ------------------------------
+    # FIREWALL DETECTION (COMMENTED OUT)
+    # ------------------------------
+
+    # - name: Detect if firewalld is installed
+    #   stat:
+    #     path: /usr/sbin/firewalld
+    #   register: firewalld_binary
+
+    # - name: Detect if firewalld is running
+    #   command: systemctl is-active firewalld
+    #   register: firewalld_status
+    #   failed_when: false
+    #   changed_when: false
+    #   when: firewalld_binary.stat.exists
+
+    # - name: Open Jenkins port {{ jenkins_port }} in firewalld (only if installed & running)
+    #   firewalld:
+    #     port: "{{ jenkins_port }}/tcp"
+    #     permanent: yes
+    #     state: enabled
+    #     immediate: yes
+    #   when:
+    #     - firewalld_binary.stat.exists
+    #     - firewalld_status.stdout == "active"
+
+    # NOTE:
+    # Above firewall logic safely checks:
+    # ✔ firewalld exists
+    # ✔ firewalld is running
+    # ✔ Then opens port 8080 (only when needed)
+    # All commented out for now.
+
+    # ------------------------------
+    # Health Checks
+    # ------------------------------
+
+    - name: Wait for Jenkins port to be open
+      wait_for:
+        host: 127.0.0.1
+        port: "{{ jenkins_port }}"
+        timeout: 60
+        state: started
+
+    - name: Verify Jenkins API endpoint is responding
+      uri:
+        url: "http://127.0.0.1:{{ jenkins_port }}/api/json"
+        status_code: [200 ,403]
+        return_content: yes
+      register: jenkins_api
+      retries: 5
+      delay: 5
+      until: jenkins_api.status in [ 200, 403 ]
+
+    - name: Display Jenkins health check response
+      debug:
+        msg: "Jenkins API responded successfully."
+
+    # ------------------------------
+    # Show initial admin password
+    # ------------------------------
+
+    - name: Read initial admin password
+      slurp:
+        src: /var/lib/jenkins/secrets/initialAdminPassword
+      register: admin_pw
+      ignore_errors: yes
+
+    - name: Show decoded initial admin password
+      when: admin_pw.content is defined
+      debug:
+        msg: "Initial Admin Password: {{ admin_pw.content | b64decode }}"

@@ -1,0 +1,24 @@
+---
+# vars file for jenkins
+
+  # Jenkins repo & keys
+    jenkins_repo_url: "https://pkg.jenkins.io/redhat-stable/jenkins.repo"
+    jenkins_gpg_key_url: "https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key"
+
+    # Packages & service
+    java_package: "java-21-amazon-corretto"
+    jenkins_package: "jenkins"
+    jenkins_service: "jenkins"
+    jenkins_port: 8080
+
+    # Backup & restore
+    jenkins_home: "/var/lib/jenkins"
+    jenkins_backup_dir: "/opt/jenkins_backup"
+    enable_backup: true
+    enable_restore: false
+    backup_filename: "jenkins_backup_{{ ansible_date_time.date }}.tar.gz"
+
+    # Template (optional)
+    jenkins_sysconfig_src: "jenkins.j2"
+    jenkins_sysconfig_dest: "/etc/sysconfig/jenkins"
+
